@@ -1,6 +1,4 @@
 fastapi
 uvicorn[standard]
 python-multipart
-pydub
-openai
-python-dotenv
+faster-whisper

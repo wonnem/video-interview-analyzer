@@ -1,12 +1,16 @@
-import os
-from openai import OpenAI
+from faster_whisper import WhisperModel
+
+_model: WhisperModel | None = None
+
+
+def _get_model() -> WhisperModel:
+    global _model
+    if _model is None:
+        # 첫 실행 시 모델 파일 자동 다운로드 (~150MB)
+        _model = WhisperModel("base", device="cpu", compute_type="int8")
+    return _model
 
 
 def transcribe(audio_path: str) -> str:
-    client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
-    with open(audio_path, "rb") as f:
-        result = client.audio.transcriptions.create(
-            model="whisper-1",
-            file=f,
-        )
-    return result.text
+    segments, _ = _get_model().transcribe(audio_path, language="en")
+    return " ".join(seg.text.strip() for seg in segments)
