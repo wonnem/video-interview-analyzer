@@ -11,7 +11,7 @@ def run_pipeline(video_path: str, applicant_id: str, question_id: str) -> Transc
 
     try:
         duration = extract_audio(video_path, wav_path)
-        transcript = transcribe(wav_path)
+        segments = transcribe(wav_path)
     finally:
         if os.path.exists(wav_path):
             os.remove(wav_path)
@@ -19,6 +19,6 @@ def run_pipeline(video_path: str, applicant_id: str, question_id: str) -> Transc
     return TranscribeResponse(
         applicant_id=applicant_id,
         question_id=question_id,
-        transcript=transcript,
-        duration_seconds=duration,
+        segments=segments,
+        duration_seconds=round(duration, 2),
     )
