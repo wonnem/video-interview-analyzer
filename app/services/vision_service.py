@@ -38,6 +38,9 @@ def _get_ocr_reader():
     return _ocr_reader
 
 
+MAX_WIDTH = 600  # DeepFace 추론 전 리사이징 상한 (속도 최적화)
+
+
 # ── 내부 유틸 ────────────────────────────────────────────────
 def _bytes_to_bgr(data: bytes):
     np = _np()
@@ -47,6 +50,17 @@ def _bytes_to_bgr(data: bytes):
     if img is None:
         raise ValueError("이미지를 디코딩할 수 없습니다.")
     return img
+
+
+def _resize_for_model(img):
+    """가로 600px 초과 이미지를 비율 유지하며 축소 — 고해상도 입력 시 추론 속도 개선."""
+    cv2 = _cv2()
+    h, w = img.shape[:2]
+    if w <= MAX_WIDTH:
+        return img
+    scale = MAX_WIDTH / w
+    new_w, new_h = MAX_WIDTH, int(h * scale)
+    return cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_AREA)
 
 
 def _save_masked(img) -> str:
@@ -88,13 +102,19 @@ def mask_id_card(img):
 
 # ── Step 3~4: 얼굴 유사도 계산 ──────────────────────────────
 def _face_similarity(img1, img2) -> float:
-    """DeepFace로 두 이미지 유사도 반환 (0~1, 높을수록 유사)."""
+    """DeepFace로 두 이미지 유사도 반환 (0~1, 높을수록 유사).
+
+    model_name='SFace'       : VGG-Face 대비 경량·고속 모델
+    detector_backend='opencv': retinaface 대비 빠른 얼굴 검출기
+    """
     from deepface import DeepFace
 
     with _suppress_output():
         result = DeepFace.verify(
             img1_path=img1,
             img2_path=img2,
+            model_name="SFace",
+            detector_backend="opencv",
             enforce_detection=False,
             silent=True,
         )
@@ -118,9 +138,12 @@ def run_verification_pipeline(
     img_id_masked = mask_id_card(img_id_card)
     masked_id_path = _save_masked(img_id_masked)
 
-    # Step 3~4: 얼굴 대조
-    score_resume_id = _face_similarity(img_resume, img_id_masked)
-    score_id_webcam = _face_similarity(img_id_masked, img_webcam)
+    # Step 3~4: 얼굴 대조 (리사이징 후 추론 — 고해상도 입력 시 속도 개선)
+    img_resume_s = _resize_for_model(img_resume)
+    img_id_s = _resize_for_model(img_id_masked)
+    img_webcam_s = _resize_for_model(img_webcam)
+    score_resume_id = _face_similarity(img_resume_s, img_id_s)
+    score_id_webcam = _face_similarity(img_id_s, img_webcam_s)
 
     status = (
         "PASS"
