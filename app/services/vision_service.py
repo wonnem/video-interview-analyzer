@@ -1,8 +1,17 @@
+import contextlib
+import io
 import os
 import re
 import uuid
 
 # cv2, numpy는 요청 시점에 지연 로딩 (vision 패키지 미설치 시 STT 기능은 정상 동작)
+
+
+@contextlib.contextmanager
+def _suppress_output():
+    """EasyOCR/DeepFace 진행 표시줄(█ 등)이 CP949 터미널에서 인코딩 오류를 일으키는 것을 방지."""
+    with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+        yield
 
 MASKED_DIR = "masked"
 PASS_THRESHOLD = 0.5  # 유사도 이 값 이상이면 PASS
@@ -24,7 +33,8 @@ def _get_ocr_reader():
     global _ocr_reader
     if _ocr_reader is None:
         import easyocr
-        _ocr_reader = easyocr.Reader(["ko", "en"], gpu=False)
+        with _suppress_output():
+            _ocr_reader = easyocr.Reader(["ko", "en"], gpu=False)
     return _ocr_reader
 
 
@@ -54,11 +64,12 @@ def mask_id_card(img):
     np = _np()
     cv2 = _cv2()
     reader = _get_ocr_reader()
-    results = reader.readtext(img)
-
-    masked = img.copy()
     pattern = re.compile(r"\d{6}-?\d{1,7}")
 
+    with _suppress_output():
+        results = reader.readtext(img)
+
+    masked = img.copy()
     for (bbox, text, _conf) in results:
         cleaned = text.replace(" ", "")
         if not pattern.search(cleaned):
@@ -80,12 +91,13 @@ def _face_similarity(img1, img2) -> float:
     """DeepFace로 두 이미지 유사도 반환 (0~1, 높을수록 유사)."""
     from deepface import DeepFace
 
-    result = DeepFace.verify(
-        img1_path=img1,
-        img2_path=img2,
-        enforce_detection=False,
-        silent=True,
-    )
+    with _suppress_output():
+        result = DeepFace.verify(
+            img1_path=img1,
+            img2_path=img2,
+            enforce_detection=False,
+            silent=True,
+        )
     distance = float(result.get("distance", 1.0))
     return round(max(0.0, min(1.0, 1.0 - distance)), 2)
 
