@@ -1,0 +1,8 @@
+fastapi
+uvicorn[standard]
+python-multipart
+faster-whisper
+easyocr
+opencv-python-headless
+deepface
+tf-keras

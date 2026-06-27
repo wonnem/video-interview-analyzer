@@ -1,0 +1,7 @@
+repos:
+-   repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.4.0
+    hooks:
+    -   id: check-added-large-files # 용량 큰 파일 업로드 방지 (깃허브 터짐 방지!)
+    -   id: detect-private-key      # 개인키, API 토큰 같은 민감 정보 유출 방지
+    -   id: trailing-whitespace     # 쓸데없는 띄어쓰기 찌꺼기 자동 제거
