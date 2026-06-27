@@ -25,3 +25,6 @@ test-video/
 
 # 8. 마스킹된 신분증 이미지 (민감정보, 서버에만 보관)
 masked/
+
+# 9. Claude 참조용 지시사항 파일 (로컬 전용)
+DIRECTIVES.md
