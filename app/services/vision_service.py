@@ -14,7 +14,6 @@ def _suppress_output():
         yield
 
 MASKED_DIR = "masked"
-PASS_THRESHOLD = 0.5  # 유사도 이 값 이상이면 PASS
 
 _ocr_reader = None
 
@@ -38,7 +37,7 @@ def _get_ocr_reader():
     return _ocr_reader
 
 
-MAX_WIDTH = 600  # DeepFace 추론 전 리사이징 상한 (속도 최적화)
+MAX_WIDTH = 800  # DeepFace 추론 전 리사이징 상한 (정확도·속도 균형)
 
 
 # ── 내부 유틸 ────────────────────────────────────────────────
@@ -100,12 +99,15 @@ def mask_id_card(img):
     return masked
 
 
-# ── Step 3~4: 얼굴 유사도 계산 ──────────────────────────────
-def _face_similarity(img1, img2) -> float:
-    """DeepFace로 두 이미지 유사도 반환 (0~1, 높을수록 유사).
+# ── Step 3~4: 얼굴 대조 ─────────────────────────────────────
+def _face_verify(img1, img2) -> tuple:
+    """DeepFace로 동일인 여부 판단 및 정규화 유사도 반환.
 
-    model_name='SFace'       : VGG-Face 대비 경량·고속 모델
-    detector_backend='opencv': retinaface 대비 빠른 얼굴 검출기
+    - verified : DeepFace 모델 자체 임계값 기준 동일인 여부 (bool)
+    - score    : distance/threshold 비율 역산 → 0~1 (1에 가까울수록 유사)
+
+    model_name='SFace'      : 경량·고속 모델
+    detector_backend='mtcnn': opencv 대비 정확한 얼굴 검출기
     """
     from deepface import DeepFace
 
@@ -114,12 +116,15 @@ def _face_similarity(img1, img2) -> float:
             img1_path=img1,
             img2_path=img2,
             model_name="SFace",
-            detector_backend="opencv",
+            detector_backend="mtcnn",
             enforce_detection=False,
             silent=True,
         )
+    verified = bool(result.get("verified", False))
     distance = float(result.get("distance", 1.0))
-    return round(max(0.0, min(1.0, 1.0 - distance)), 2)
+    threshold = float(result.get("threshold", 0.593))
+    score = round(max(0.0, min(1.0, 1.0 - distance / threshold)), 2) if threshold > 0 else 0.0
+    return verified, score
 
 
 # ── 메인 파이프라인 ──────────────────────────────────────────
@@ -138,18 +143,14 @@ def run_verification_pipeline(
     img_id_masked = mask_id_card(img_id_card)
     masked_id_path = _save_masked(img_id_masked)
 
-    # Step 3~4: 얼굴 대조 (리사이징 후 추론 — 고해상도 입력 시 속도 개선)
+    # Step 3~4: 얼굴 대조 (리사이징 후 추론)
     img_resume_s = _resize_for_model(img_resume)
     img_id_s = _resize_for_model(img_id_masked)
     img_webcam_s = _resize_for_model(img_webcam)
-    score_resume_id = _face_similarity(img_resume_s, img_id_s)
-    score_id_webcam = _face_similarity(img_id_s, img_webcam_s)
+    verified_resume_id, score_resume_id = _face_verify(img_resume_s, img_id_s)
+    verified_id_webcam, score_id_webcam = _face_verify(img_id_s, img_webcam_s)
 
-    status = (
-        "PASS"
-        if score_resume_id >= PASS_THRESHOLD and score_id_webcam >= PASS_THRESHOLD
-        else "FAIL"
-    )
+    status = "PASS" if verified_resume_id and verified_id_webcam else "FAIL"
 
     result = {
         "applicant_id": applicant_id,
